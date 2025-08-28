@@ -4,10 +4,8 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 from datetime import date
 import locale
-import random
-from pathlib import Path
-import os
 import re
+from pathlib import Path
 
 # ===== Configuration Streamlit =====
 st.set_page_config(
@@ -17,29 +15,64 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuration locale
+# Configuration locale - FR
 try:
-    locale.setlocale(locale.LC_ALL, 'fr_CH.utf8')
+    locale.setlocale(locale.LC_TIME, 'fr_CH.UTF-8')
 except Exception:
     try:
-        locale.setlocale(locale.LC_ALL, 'fr_FR.utf8')
+        locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
     except Exception:
-        pass  # fallback
+        try:
+            locale.setlocale(locale.LC_TIME, 'French_Switzerland')
+        except Exception:
+            pass
 
-# ===== Classe PDF avec gestion des polices Unicode/fallback =====
+
+# ===== Gestionnaire de numéros de facture =====
+class InvoiceNumberManager:
+    @staticmethod
+    def generate_invoice_number(numero):
+        today = date.today()
+        date_part = today.strftime('%Y%m%d')
+        try:
+            numero_int = int(numero)
+        except (ValueError, TypeError):
+            numero_int = 1
+        return f"BW-{date_part}-{numero_int:03d}"
+
+    @staticmethod
+    def get_formatted_date():
+        today = date.today()
+        jours_fr = {
+            'Monday': 'Lundi', 'Tuesday': 'Mardi', 'Wednesday': 'Mercredi',
+            'Thursday': 'Jeudi', 'Friday': 'Vendredi', 'Saturday': 'Samedi', 'Sunday': 'Dimanche'
+        }
+        mois_fr = {
+            'January': 'janvier', 'February': 'février', 'March': 'mars', 'April': 'avril',
+            'May': 'mai', 'June': 'juin', 'July': 'juillet', 'August': 'août',
+            'September': 'septembre', 'October': 'octobre', 'November': 'novembre', 'December': 'décembre'
+        }
+        try:
+            date_str = today.strftime("Le %A %d %B %Y")
+            for eng, fr in jours_fr.items():
+                date_str = date_str.replace(eng, fr)
+            for eng, fr in mois_fr.items():
+                date_str = date_str.replace(eng, fr)
+            return date_str
+        except Exception:
+            return today.strftime("Le %d/%m/%Y")
+
+
+# ===== Classe PDF =====
 class ModernInvoicePDF(FPDF):
     def __init__(self):
         super().__init__('P', 'mm', 'A4')
-        self.set_auto_page_break(auto=True, margin=15)
-
-        # Tentative d'enregistrer une police Unicode (DejaVu) depuis plusieurs emplacements connus.
-        # Si on ne trouve pas de TTF, on reste sur les polices intégrées (Helvetica).
+        self.set_auto_page_break(auto=True, margin=25)
         self.unicode_font_available = False
-        self.base_font = "Helvetica"  # fallback
+        self.base_font = "Helvetica"
         self._register_unicode_fonts_if_available()
 
     def _register_unicode_fonts_if_available(self):
-        # Emplacements candidates pour les fichiers DejaVu
         candidates = {
             "regular": [
                 Path("DejaVuSans.ttf"),
@@ -52,118 +85,70 @@ class ModernInvoicePDF(FPDF):
                 Path("fonts/DejaVuSans-Bold.ttf"),
                 Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
                 Path("C:/Windows/Fonts/DejaVuSans-Bold.ttf"),
-            ],
-            "italic": [
-                Path("DejaVuSans-Oblique.ttf"),
-                Path("fonts/DejaVuSans-Oblique.ttf"),
-                Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf"),
-                Path("C:/Windows/Fonts/DejaVuSans-Oblique.ttf"),
-            ],
-            "bolditalic": [
-                Path("DejaVuSans-BoldOblique.ttf"),
-                Path("fonts/DejaVuSans-BoldOblique.ttf"),
-                Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"),
-                Path("C:/Windows/Fonts/DejaVuSans-BoldOblique.ttf"),
-            ],
+            ]
         }
-
         found = {}
         for style, paths in candidates.items():
             for p in paths:
                 if p.exists():
                     found[style] = p
                     break
-
-        # Si on trouve au moins le regular, on enregistre.
         if "regular" in found:
             try:
-                # register regular
                 self.add_font("DejaVu", "", str(found["regular"]))
-                # register bold (si trouvé, sinon on peut réutiliser regular)
                 if "bold" in found:
                     self.add_font("DejaVu", "B", str(found["bold"]))
                 else:
-                    # fallback: reuse regular file for bold to avoid "Undefined font" errors
                     self.add_font("DejaVu", "B", str(found["regular"]))
-                # italic
-                if "italic" in found:
-                    self.add_font("DejaVu", "I", str(found["italic"]))
-                else:
-                    self.add_font("DejaVu", "I", str(found["regular"]))
-                # bold-italic
-                if "bolditalic" in found:
-                    self.add_font("DejaVu", "BI", str(found["bolditalic"]))
-                else:
-                    self.add_font("DejaVu", "BI", str(found["regular"]))
-
                 self.unicode_font_available = True
                 self.base_font = "DejaVu"
             except Exception:
-                # en cas d'échec, fallback silencieux sur Helvetica
                 self.unicode_font_available = False
                 self.base_font = "Helvetica"
 
     def safe(self, text: str) -> str:
-        """
-        Retourne une version du texte sûre pour la police active :
-         - si police Unicode dispo : retourne tel quel
-         - sinon : remplace les puces/emoji non-latin1, retire caractères hors latin1
-        """
         if text is None:
             return ""
         if self.unicode_font_available:
             return str(text)
-        # remplacement simple pour puces
         t = str(text).replace("•", "-")
-        # enlever emojis / caractères non Latin-1 (ord > 255)
         t = "".join(ch for ch in t if ord(ch) < 256)
-        # évite caractères de controle problématiques
         t = re.sub(r"[\x00-\x1f\x7f]", "", t)
         return t
 
-    # Header & footer utilisent self.base_font (DejaVu si dispo, sinon Helvetica)
     def header(self):
         self.set_fill_color(41, 128, 185)
-        self.rect(0, 0, 210, 35, 'F')
-
+        self.rect(0, 0, 210, 40, 'F')
         self.set_text_color(255, 255, 255)
         self.set_font(self.base_font, 'B', 24)
-        self.cell(0, 25, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-        self.set_font(self.base_font, '', 12)
-        self.set_y(20)
-        self.cell(0, 10, self.safe('Solutions web modernes & performantes'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        
+        self.set_y(8)
+        self.cell(0, 12, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font(self.base_font, '', 11)
+        self.set_y(22)
+        self.cell(0, 8, self.safe('Solutions web modernes & performantes'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(15)
 
     def footer(self):
-        self.set_y(-25)
+        self.set_y(-20)
         self.set_fill_color(245, 245, 245)
-        self.rect(0, self.get_y()-5, 210, 30, 'F')
-
+        self.rect(0, self.get_y()-5, 210, 35, 'F')
         self.set_text_color(100, 100, 100)
         self.set_font(self.base_font, '', 9)
-
-        self.cell(95, 5, self.safe('Urs Schweizer: urs.schweizer@brudisweb.ch | +41 78 256 14 66'), new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(95, 5, self.safe('Urs Schweizer'), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe('www.brudisweb.ch'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.cell(95, 5, self.safe('Marius Pochon: marius.pochon@brudisweb.ch | +41 79 101 61 94'), new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(95, 5, self.safe('Marius Pochon'), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe(f'Page {self.page_no()}'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
 # ===== Création du PDF =====
-def create_pdf(entreprise, montant_float, description, adresse):
-    """Génère le PDF de facture"""
+def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="", numero=""):
     pdf = ModernInvoicePDF()
     pdf.add_page()
 
-    now = date.today()
-    try:
-        date_str = now.strftime("Le %A %d %B %Y")
-    except Exception:
-        date_str = now.strftime("Le %d/%m/%Y")
+    numero_facture = InvoiceNumberManager.generate_invoice_number(numero)
+    date_str = InvoiceNumberManager.get_formatted_date()
 
-    numero_facture = f"BW-{now.strftime('%Y%m%d')}-{random.randint(100, 999)}"
-
+    # En-tête facture
     pdf.set_text_color(41, 128, 185)
     pdf.set_font(pdf.base_font, 'B', 20)
     pdf.cell(0, 15, pdf.safe('FACTURE'), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
@@ -181,7 +166,7 @@ def create_pdf(entreprise, montant_float, description, adresse):
 
     pdf.ln(10)
 
-    # Section facturation
+    # Section facturation - Headers
     pdf.set_fill_color(41, 128, 185)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(pdf.base_font, 'B', 12)
@@ -193,101 +178,137 @@ def create_pdf(entreprise, montant_float, description, adresse):
 
     pdf.set_text_color(0, 0, 0)
 
+    # --- Préparation des informations ---
     notre_info = [
         "BrudisWeb",
         "Urs Schweizer & Marius Pochon",
-        "Solutions web modernes",
-        "",
-        "urs.schweizer@brudisweb.ch",
-        "marius.pochon@brudisweb.ch",
-        "+41 78 256 14 66"
+        "contact@brudisweb.ch"
     ]
-    client_info = [entreprise or "", ""]
-    if adresse:
-        client_info.extend(adresse.split('\n'))
-    else:
-        client_info.append("Adresse non spécifiée")
+    
+    # Traitement de l'adresse BrudisWeb avec gestion correcte des retours à la ligne
+    if adresse_brudisweb and adresse_brudisweb.strip():
+        # Séparer les lignes et filtrer les lignes vides
+        lignes_adresse = [ligne.strip() for ligne in adresse_brudisweb.split('\n') if ligne.strip()]
+        notre_info.extend(lignes_adresse)
+    
+    if iban and iban.strip():
+        notre_info.append(f"IBAN: {iban.strip()}")
 
+    # --- Infos client ---
+    client_info = []
+    if entreprise and entreprise.strip():
+        client_info.append(entreprise.strip())
+    
+    # Traitement de l'adresse client avec gestion correcte des retours à la ligne
+    if adresse_client and adresse_client.strip():
+        # Séparer les lignes et filtrer les lignes vides
+        lignes_client = [ligne.strip() for ligne in adresse_client.split('\n') if ligne.strip()]
+        client_info.extend(lignes_client)
+    
+    if not client_info:
+        client_info = ["Adresse client non spécifiée"]
+
+    # --- Calcul des hauteurs nécessaires ---
+    line_height = 6
     max_lines = max(len(notre_info), len(client_info))
-    for i in range(max_lines):
-        notre_line = notre_info[i] if i < len(notre_info) else ""
-        if i == 0:
-            pdf.set_font(pdf.base_font, 'B', 10)
-        else:
-            pdf.set_font(pdf.base_font, '', 10)
-        pdf.cell(95, 6, pdf.safe(notre_line), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+    box_height = max_lines * line_height + 10  # +10 pour padding
 
-        client_line = client_info[i] if i < len(client_info) else ""
-        if i == 0:
-            pdf.set_font(pdf.base_font, 'B', 10)
-        else:
-            pdf.set_font(pdf.base_font, '', 10)
-        pdf.cell(95, 6, pdf.safe(client_line), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    # --- Impression des colonnes avec bordures complètes ---
+    y_start = pdf.get_y()
+    x_left = pdf.get_x()
+    
+    # Dessiner les bordures des deux colonnes
+    pdf.rect(x_left, y_start, 95, box_height)  # Colonne DE
+    pdf.rect(x_left + 95, y_start, 95, box_height)  # Colonne À
+    
+    # Colonne "DE" - contenu
+    pdf.set_xy(x_left + 2, y_start + 2)  # Petit padding
+    pdf.set_font(pdf.base_font, '', 10)
+    for ligne in notre_info:
+        if pdf.get_y() < y_start + box_height - 2:
+            pdf.cell(91, line_height, pdf.safe(ligne), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_x(x_left + 2)
+    
+    # Colonne "À" - contenu
+    pdf.set_xy(x_left + 95 + 2, y_start + 2)  # Petit padding
+    for ligne in client_info:
+        if pdf.get_y() < y_start + box_height - 2:
+            pdf.cell(91, line_height, pdf.safe(ligne), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_x(x_left + 95 + 2)
+    
+    # Se positionner après les cases
+    pdf.set_y(y_start + box_height)
+    pdf.ln(10)
 
-    pdf.ln(15)
-
-    # Tableau
+    # Tableau des services
     pdf.set_fill_color(41, 128, 185)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(pdf.base_font, 'B', 11)
-    pdf.cell(100, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
+    pdf.cell(80, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
     pdf.cell(30, 10, pdf.safe('QUANTITÉ'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
-    pdf.cell(30, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
-    pdf.cell(30, 10, pdf.safe('TOTAL'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+    pdf.cell(40, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
+    pdf.cell(40, 10, pdf.safe('TOTAL'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
     pdf.set_text_color(0, 0, 0)
     pdf.set_font(pdf.base_font, '', 10)
-    pdf.cell(100, 12, pdf.safe(description), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-    pdf.cell(30, 12, pdf.safe('1'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
-    pdf.cell(30, 12, pdf.safe(f'CHF {montant_float:.2f}'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
-    pdf.cell(30, 12, pdf.safe(f'CHF {montant_float:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
-    for _ in range(3):
-        pdf.cell(100, 8, '', border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(30, 8, '', border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(30, 8, '', border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(30, 8, '', border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    total_general = 0.0
+    for service in services:
+        desc, qty, price = service
+        line_total = qty * price
+        total_general += line_total
+        pdf.cell(80, 10, pdf.safe(desc), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(30, 10, pdf.safe(str(qty)), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
+        pdf.cell(40, 10, pdf.safe(f'CHF {price:.2f}'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
+        pdf.cell(40, 10, pdf.safe(f'CHF {line_total:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
     pdf.ln(5)
-    pdf.set_fill_color(245, 245, 245)
-    pdf.cell(130, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
-    pdf.set_font(pdf.base_font, 'B', 11)
-    pdf.cell(30, 8, pdf.safe('Sous-total:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
-    pdf.set_font(pdf.base_font, '', 11)
-    pdf.cell(30, 8, pdf.safe(f'CHF {montant_float:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
-    pdf.cell(130, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
+    # Totaux
+    pdf.set_fill_color(245, 245, 245)
+    pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_font(pdf.base_font, 'B', 11)
+    pdf.cell(40, 8, pdf.safe('Sous-total:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
+    pdf.set_font(pdf.base_font, '', 11)
+    pdf.cell(40, 8, pdf.safe(f'CHF {total_general:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+
+    pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, '', 10)
-    pdf.cell(30, 8, pdf.safe('TVA (0%):'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-    pdf.cell(30, 8, pdf.safe('CHF 0.00'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
+    pdf.cell(40, 8, pdf.safe('TVA (0%):'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.cell(40, 8, pdf.safe('CHF 0.00'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
     pdf.set_fill_color(41, 128, 185)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(130, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, 'B', 12)
-    pdf.cell(30, 10, pdf.safe('TOTAL:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
-    pdf.cell(30, 10, pdf.safe(f'CHF {montant_float:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+    pdf.cell(40, 10, pdf.safe('TOTAL:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
+    pdf.cell(40, 10, pdf.safe(f'CHF {total_general:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
-    pdf.ln(15)
+    pdf.ln(12)
+
+    # Conditions de paiement
     pdf.set_text_color(0, 0, 0)
     pdf.set_font(pdf.base_font, 'B', 12)
-    pdf.cell(0, 10, pdf.safe('CONDITIONS DE PAIEMENT'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, pdf.safe('CONDITIONS DE PAIEMENT'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.set_font(pdf.base_font, '', 10)
     conditions = [
+        "• Virement bancaire",
         "• Paiement à 30 jours",
-        "• Virement bancaire ou facture QR",
         "• En cas de retard, intérêts de 5% par an",
-        "",
-        "Merci de votre confiance !"
+        "• En cas de non-paiement, le site pourra être suspendu"
     ]
     for condition in conditions:
-        pdf.cell(0, 6, pdf.safe(condition), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 5, pdf.safe(condition), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.ln(3)
+    pdf.set_font(pdf.base_font, 'B', 12)
+    pdf.cell(0, 6, pdf.safe("Merci de votre confiance !"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     return pdf, numero_facture
 
 
-# ===== Interface Streamlit (identique à la tienne, avec small fixes) =====
+# ===== Interface Streamlit =====
 def main():
     st.markdown("""
     <style>
@@ -308,6 +329,9 @@ def main():
         font-size: 1.1rem;
         margin: 0;
     }
+    .stTextArea textarea {
+        font-family: monospace;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -323,10 +347,48 @@ def main():
         st.markdown("---")
 
         entreprise = st.text_input("🏢 Nom de l'entreprise *", placeholder="Ex: Apple Inc.")
-        montant = st.number_input("💰 Montant (CHF) *", min_value=0.0, format="%.2f")
         st.markdown("---")
-        description = st.text_input("📝 Description du service", value="Développement site web")
-        adresse = st.text_area("📍 Adresse du client", placeholder="Rue de la Paix 123\n1000 Lausanne\nSuisse", height=100)
+
+        # --- Services multiples ---
+        st.markdown("### 🛠️ Services")
+        if "services" not in st.session_state:
+            st.session_state.services = []
+
+        with st.form("services_form", clear_on_submit=True):
+            desc = st.text_input("Description du service")
+            qty = st.number_input("Quantité", min_value=1, value=1)
+            price = st.number_input("Prix unitaire (CHF)", min_value=0.0, format="%.2f")
+            add = st.form_submit_button("➕ Ajouter le service")
+            if add and desc and price > 0:
+                st.session_state.services.append((desc, qty, price))
+
+        if st.session_state.services:
+            st.markdown("#### Services ajoutés :")
+            for i, (d, q, p) in enumerate(st.session_state.services):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"{i+1}. {d} – {q} × CHF {p:.2f} = CHF {q*p:.2f}")
+                with col2:
+                    if st.button("❌", key=f"del_{i}"):
+                        st.session_state.services.pop(i)
+                        st.rerun()
+
+        st.markdown("---")
+
+        adresse_client = st.text_area(
+            "📍 Adresse du client", 
+            height=100,
+            placeholder="Nom de l'entreprise\nRue et numéro\nCode postal Ville\nPays"
+        )
+        
+        adresse_brudisweb = st.text_area(
+            "🏢 Votre adresse (Entreprise)", 
+            height=100,
+            placeholder="Rue et numéro\nCode postal Ville\nPays"
+        )
+        
+        iban = st.text_input("🏦 IBAN", placeholder="CH00 0000 0000 0000 0000 0")
+        numero = st.text_input("#️⃣ Numéro de facture", placeholder="01")
         st.markdown("---")
         st.markdown("*️⃣ *Champs obligatoires*")
 
@@ -334,71 +396,79 @@ def main():
 
     with col1:
         st.markdown("### 📄 Aperçu de la Facture")
-        if entreprise and montant > 0:
+        if entreprise and st.session_state.services:
             st.success("✅ Prêt pour génération")
             with st.expander("🔍 Détails de la facture", expanded=True):
                 st.write(f"**Client:** {entreprise}")
-                st.write(f"**Montant:** CHF {montant:.2f}")
-                st.write(f"**Service:** {description}")
-                if adresse:
-                    st.write(f"**Adresse:** {adresse}")
-                today = date.today()
-                demo_numero = f"BW-{today.strftime('%Y%m%d')}-XXX"
-                st.write(f"**Date:** {today.strftime('%d/%m/%Y')}")
-                st.write(f"**Numéro:** {demo_numero}")
+                total_preview = sum(q*p for _, q, p in st.session_state.services)
+                st.write(f"**Total estimé:** CHF {total_preview:.2f}")
+                st.write(f"**Services:**")
+                for d, q, p in st.session_state.services:
+                    st.write(f"- {d} ({q} × CHF {p:.2f}) = CHF {q*p:.2f}")
+                
+                # Affichage des adresses avec préservation des retours à la ligne
+                st.write("**Adresse client:**")
+                if adresse_client:
+                    for ligne in adresse_client.split('\n'):
+                        if ligne.strip():
+                            st.write(f"  {ligne}")
+                else:
+                    st.write("  (non spécifiée)")
+                
+                st.write("**Adresse entreprise:**")
+                if adresse_brudisweb:
+                    for ligne in adresse_brudisweb.split('\n'):
+                        if ligne.strip():
+                            st.write(f"  {ligne}")
+                else:
+                    st.write("  (non spécifiée)")
+                
+                if iban:
+                    st.write(f"**IBAN:** {iban}")
+                if numero:
+                    st.write(f"**Numéro:** {numero}")
+                demo_numero = InvoiceNumberManager.generate_invoice_number(numero)
+                demo_date = InvoiceNumberManager.get_formatted_date()
+                st.write(f"**Date:** {demo_date}")
+                st.write(f"**Numéro de facture:** {demo_numero}")
         else:
-            st.warning("⚠️ Veuillez remplir les champs obligatoires")
+            st.warning("⚠️ Veuillez remplir les champs obligatoires et ajouter au moins un service")
 
     with col2:
         st.markdown("### 🎯 Actions")
-
-        if st.button("🚀 Générer la Facture"):
+        if st.button("🚀 Générer la Facture", type="primary", use_container_width=True):
             if not entreprise:
                 st.error("❌ Veuillez saisir le nom de l'entreprise")
-            elif montant <= 0:
-                st.error("❌ Le montant doit être supérieur à 0")
+            elif not st.session_state.services:
+                st.error("❌ Ajoutez au moins un service")
             else:
                 try:
                     with st.spinner("📄 Génération du PDF en cours..."):
-                        pdf, numero_facture = create_pdf(entreprise, montant, description, adresse)
-
-                    # Solution plus robuste : utiliser output() au lieu d'output_bytes()
-                    try:
-                        # output() retourne directement des bytes utilisables
+                        pdf, numero_facture = create_pdf(
+                            entreprise,
+                            st.session_state.services,
+                            adresse_client,
+                            adresse_brudisweb,
+                            iban,
+                            numero
+                        )
                         raw_output = pdf.output()
                         pdf_content = bytes(raw_output) if isinstance(raw_output, bytearray) else raw_output
-                    except Exception:
-                        # Si output() échoue, essayer output_bytes() avec conversion
-                        try:
-                            raw_output = pdf.output_bytes()
-                            # Conversion forcée en bytes avec encoding latin1 si nécessaire
-                            if isinstance(raw_output, bytearray):
-                                pdf_content = bytes(raw_output)
-                            else:
-                                pdf_content = raw_output
-                        except Exception:
-                            # Dernier recours : écrire temporairement sur disque
-                            import tempfile
-                            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                                pdf.output(tmp.name)
-                                with open(tmp.name, 'rb') as f:
-                                    pdf_content = f.read()
-                                os.unlink(tmp.name)
-                                
-                    filename = f'Facture_BrudisWeb_{numero_facture}.pdf'
-
-                    st.success("✅ Facture générée avec succès !")
-                    st.download_button(
-                        label="📄 Télécharger la Facture",
-                        data=pdf_content,
-                        file_name=filename,
-                        mime="application/pdf"
-                    )
+                        filename = f'Facture_BrudisWeb_{numero_facture}.pdf'
+                        st.success("✅ Facture générée avec succès !")
+                        st.download_button(
+                            label="📥 Télécharger la Facture",
+                            data=pdf_content,
+                            file_name=filename,
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
                 except Exception as e:
                     st.error(f"❌ Erreur lors de la génération: {str(e)}")
-                    # Debug: afficher le type exact du problème
-                    import traceback
-                    st.error(f"Détail de l'erreur: {traceback.format_exc()}")
+
+        if st.button("🗑️ Réinitialiser les services", use_container_width=True):
+            st.session_state.services = []
+            st.rerun()
 
         st.markdown("---")
         st.markdown("### ℹ️ Informations")
@@ -408,7 +478,7 @@ def main():
         - Marius Pochon  
 
         🌐 www.brudisweb.ch  
-        📧 Contact disponible sur le site
+        📧 contact@brudisweb.ch
         """)
 
 
