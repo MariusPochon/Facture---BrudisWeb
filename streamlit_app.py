@@ -125,6 +125,7 @@ class ModernInvoicePDF(FPDF):
         self.cell(0, 12, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_font(self.base_font, '', 11)
         self.set_y(22)
+        self.cell(0, 8, self.safe('Solutions web modernes & performantes'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(15)
 
     def footer(self):
@@ -133,13 +134,16 @@ class ModernInvoicePDF(FPDF):
         self.rect(0, self.get_y()-5, 210, 35, 'F')
         self.set_text_color(100, 100, 100)
         self.set_font(self.base_font, '', 9)
+        # MODIFIÉ : "Urs Schweizer" supprimé — remplacé par une cellule vide
+        self.cell(95, 5, self.safe(''), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe('www.brudisweb.ch'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.cell(95, 5, self.safe('Marius Pochon'), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe(f'Page {self.page_no()}'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
 # ===== Création du PDF =====
-def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="", numero=""):
+def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="", numero="", rabais=0.0):
+    # MODIFIÉ : ajout du paramètre rabais
     pdf = ModernInvoicePDF()
     pdf.add_page()
 
@@ -177,14 +181,13 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     pdf.set_text_color(0, 0, 0)
 
     # --- Préparation des informations ---
+    # MODIFIÉ : "BrudisWeb" supprimé de la section DE, seulement "Marius Pochon"
     notre_info = [
         "Marius Pochon",
         "contact@brudisweb.ch"
     ]
     
-    # Traitement de l'adresse BrudisWeb avec gestion correcte des retours à la ligne
     if adresse_brudisweb and adresse_brudisweb.strip():
-        # Séparer les lignes et filtrer les lignes vides
         lignes_adresse = [ligne.strip() for ligne in adresse_brudisweb.split('\n') if ligne.strip()]
         notre_info.extend(lignes_adresse)
     
@@ -196,54 +199,49 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     if entreprise and entreprise.strip():
         client_info.append(entreprise.strip())
     
-    # Traitement de l'adresse client avec gestion correcte des retours à la ligne
     if adresse_client and adresse_client.strip():
-        # Séparer les lignes et filtrer les lignes vides
         lignes_client = [ligne.strip() for ligne in adresse_client.split('\n') if ligne.strip()]
         client_info.extend(lignes_client)
     
     if not client_info:
         client_info = ["Adresse client non spécifiée"]
 
-    # --- Calcul des hauteurs nécessaires ---
+    # --- Calcul des hauteurs ---
     line_height = 6
     max_lines = max(len(notre_info), len(client_info))
-    box_height = max_lines * line_height + 10  # +10 pour padding
+    box_height = max_lines * line_height + 10
 
-    # --- Impression des colonnes avec bordures complètes ---
     y_start = pdf.get_y()
     x_left = pdf.get_x()
     
-    # Dessiner les bordures des deux colonnes
-    pdf.rect(x_left, y_start, 95, box_height)  # Colonne DE
-    pdf.rect(x_left + 95, y_start, 95, box_height)  # Colonne À
+    pdf.rect(x_left, y_start, 95, box_height)
+    pdf.rect(x_left + 95, y_start, 95, box_height)
     
-    # Colonne "DE" - contenu
-    pdf.set_xy(x_left + 2, y_start + 2)  # Petit padding
+    pdf.set_xy(x_left + 2, y_start + 2)
     pdf.set_font(pdf.base_font, '', 10)
     for ligne in notre_info:
         if pdf.get_y() < y_start + box_height - 2:
             pdf.cell(91, line_height, pdf.safe(ligne), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(x_left + 2)
     
-    # Colonne "À" - contenu
-    pdf.set_xy(x_left + 95 + 2, y_start + 2)  # Petit padding
+    pdf.set_xy(x_left + 95 + 2, y_start + 2)
     for ligne in client_info:
         if pdf.get_y() < y_start + box_height - 2:
             pdf.cell(91, line_height, pdf.safe(ligne), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_x(x_left + 95 + 2)
     
-    # Se positionner après les cases
     pdf.set_y(y_start + box_height)
     pdf.ln(10)
 
     # Tableau des services
+    # MODIFIÉ : "QUANTITÉ" → "HEURE", ajout colonne "RABAIS"
     pdf.set_fill_color(41, 128, 185)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(pdf.base_font, 'B', 11)
-    pdf.cell(80, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
-    pdf.cell(30, 10, pdf.safe('HEURE'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
-    pdf.cell(40, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
+    pdf.cell(70, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
+    pdf.cell(25, 10, pdf.safe('HEURE'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')  # MODIFIÉ
+    pdf.cell(30, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
+    pdf.cell(25, 10, pdf.safe('RABAIS'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')  # MODIFIÉ : nouvelle colonne
     pdf.cell(40, 10, pdf.safe('TOTAL'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
     pdf.set_text_color(0, 0, 0)
@@ -252,22 +250,36 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     total_general = 0.0
     for service in services:
         desc, qty, price = service
-        line_total = qty * price
+        # MODIFIÉ : application du rabais sur chaque ligne
+        montant_brut = qty * price
+        montant_rabais = montant_brut * (rabais / 100.0)
+        line_total = montant_brut - montant_rabais
         total_general += line_total
-        pdf.cell(80, 10, pdf.safe(desc), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(30, 10, pdf.safe(str(qty)), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
-        pdf.cell(40, 10, pdf.safe(f'CHF {price:.2f}'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
+        pdf.cell(70, 10, pdf.safe(desc), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(25, 10, pdf.safe(str(qty)), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
+        pdf.cell(30, 10, pdf.safe(f'CHF {price:.2f}'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
+        pdf.cell(25, 10, pdf.safe(f'{rabais:.0f}%'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')  # MODIFIÉ
         pdf.cell(40, 10, pdf.safe(f'CHF {line_total:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
     pdf.ln(5)
 
     # Totaux
+    # MODIFIÉ : ajout de la ligne de rabais dans les totaux
+    sous_total_brut = sum(q * p for _, q, p in services)
+    montant_rabais_total = sous_total_brut * (rabais / 100.0)
+
     pdf.set_fill_color(245, 245, 245)
     pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, 'B', 11)
     pdf.cell(40, 8, pdf.safe('Sous-total:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
     pdf.set_font(pdf.base_font, '', 11)
-    pdf.cell(40, 8, pdf.safe(f'CHF {total_general:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+    pdf.cell(40, 8, pdf.safe(f'CHF {sous_total_brut:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+
+    if rabais > 0:  # MODIFIÉ : ligne rabais
+        pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_font(pdf.base_font, '', 10)
+        pdf.cell(40, 8, pdf.safe(f'Rabais ({rabais:.0f}%):'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(40, 8, pdf.safe(f'- CHF {montant_rabais_total:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
     pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, '', 10)
@@ -353,7 +365,7 @@ def main():
 
         with st.form("services_form", clear_on_submit=True):
             desc = st.text_input("Description du service")
-            qty = st.number_input("Quantité", min_value=1, value=1)
+            qty = st.number_input("Heures", min_value=1, value=1)  # MODIFIÉ : label "Heures"
             price = st.number_input("Prix unitaire (CHF)", min_value=0.0, format="%.2f")
             add = st.form_submit_button("➕ Ajouter le service")
             if add and desc and price > 0:
@@ -364,13 +376,16 @@ def main():
             for i, (d, q, p) in enumerate(st.session_state.services):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.write(f"{i+1}. {d} – {q} × CHF {p:.2f} = CHF {q*p:.2f}")
+                    st.write(f"{i+1}. {d} – {q}h × CHF {p:.2f} = CHF {q*p:.2f}")  # MODIFIÉ : "h"
                 with col2:
                     if st.button("❌", key=f"del_{i}"):
                         st.session_state.services.pop(i)
                         st.rerun()
 
         st.markdown("---")
+
+        # MODIFIÉ : champ rabais ajouté
+        rabais = st.number_input("💰 Rabais (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, format="%.0f")
 
         adresse_client = st.text_area(
             "📍 Adresse du client", 
@@ -397,13 +412,17 @@ def main():
             st.success("✅ Prêt pour génération")
             with st.expander("🔍 Détails de la facture", expanded=True):
                 st.write(f"**Client:** {entreprise}")
-                total_preview = sum(q*p for _, q, p in st.session_state.services)
+                sous_total = sum(q*p for _, q, p in st.session_state.services)
+                montant_rabais = sous_total * (rabais / 100.0)
+                total_preview = sous_total - montant_rabais
+                st.write(f"**Sous-total:** CHF {sous_total:.2f}")
+                if rabais > 0:
+                    st.write(f"**Rabais ({rabais:.0f}%):** - CHF {montant_rabais:.2f}")  # MODIFIÉ
                 st.write(f"**Total estimé:** CHF {total_preview:.2f}")
                 st.write(f"**Services:**")
                 for d, q, p in st.session_state.services:
-                    st.write(f"- {d} ({q} × CHF {p:.2f}) = CHF {q*p:.2f}")
+                    st.write(f"- {d} ({q}h × CHF {p:.2f}) = CHF {q*p:.2f}")
                 
-                # Affichage des adresses avec préservation des retours à la ligne
                 st.write("**Adresse client:**")
                 if adresse_client:
                     for ligne in adresse_client.split('\n'):
@@ -447,7 +466,8 @@ def main():
                             adresse_client,
                             adresse_brudisweb,
                             iban,
-                            numero
+                            numero,
+                            rabais  # MODIFIÉ : passage du rabais
                         )
                         raw_output = pdf.output()
                         pdf_content = bytes(raw_output) if isinstance(raw_output, bytearray) else raw_output
@@ -469,8 +489,9 @@ def main():
 
         st.markdown("---")
         st.markdown("### ℹ️ Informations")
+        # MODIFIÉ : "Urs Schweizer" supprimé
         st.markdown("""
-        **BrudisWeb**   
+        **BrudisWeb**  
         - Marius Pochon  
 
         🌐 www.brudisweb.ch  
