@@ -125,7 +125,6 @@ class ModernInvoicePDF(FPDF):
         self.cell(0, 12, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_font(self.base_font, '', 11)
         self.set_y(22)
-        self.cell(0, 8, self.safe('Solutions web modernes & performantes'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(15)
 
     def footer(self):
@@ -134,7 +133,6 @@ class ModernInvoicePDF(FPDF):
         self.rect(0, self.get_y()-5, 210, 35, 'F')
         self.set_text_color(100, 100, 100)
         self.set_font(self.base_font, '', 9)
-        self.cell(95, 5, self.safe('Urs Schweizer'), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe('www.brudisweb.ch'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.cell(95, 5, self.safe('Marius Pochon'), new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.cell(95, 5, self.safe(f'Page {self.page_no()}'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -180,8 +178,7 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
 
     # --- Préparation des informations ---
     notre_info = [
-        "BrudisWeb",
-        "Urs Schweizer & Marius Pochon",
+        "Marius Pochon",
         "contact@brudisweb.ch"
     ]
     
@@ -245,7 +242,7 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(pdf.base_font, 'B', 11)
     pdf.cell(80, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
-    pdf.cell(30, 10, pdf.safe('QUANTITÉ'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
+    pdf.cell(30, 10, pdf.safe('HEURE'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
     pdf.cell(40, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
     pdf.cell(40, 10, pdf.safe('TOTAL'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
@@ -473,8 +470,7 @@ def main():
         st.markdown("---")
         st.markdown("### ℹ️ Informations")
         st.markdown("""
-        **BrudisWeb**  
-        - Urs Schweizer  
+        **BrudisWeb**   
         - Marius Pochon  
 
         🌐 www.brudisweb.ch  
