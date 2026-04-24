@@ -125,8 +125,6 @@ class ModernInvoicePDF(FPDF):
         self.cell(0, 12, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_font(self.base_font, '', 11)
         self.set_y(22)
-        self.cell(0, 8, self.safe('Solutions web modernes & performantes'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(15)
 
     def footer(self):
         self.set_y(-20)
@@ -184,7 +182,6 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     # MODIFIÉ : "BrudisWeb" supprimé de la section DE, seulement "Marius Pochon"
     notre_info = [
         "Marius Pochon",
-        "contact@brudisweb.ch"
     ]
     
     if adresse_brudisweb and adresse_brudisweb.strip():
