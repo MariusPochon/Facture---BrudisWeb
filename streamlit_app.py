@@ -125,6 +125,7 @@ class ModernInvoicePDF(FPDF):
         self.cell(0, 12, self.safe('BrudisWeb'), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_font(self.base_font, '', 11)
         self.set_y(22)
+        self.ln(15)
 
     def footer(self):
         self.set_y(-20)
