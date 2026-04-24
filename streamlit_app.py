@@ -140,7 +140,7 @@ class ModernInvoicePDF(FPDF):
 
 
 # ===== Création du PDF =====
-def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="", numero="", rabais=0.0):
+def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="", numero=""):
     pdf = ModernInvoicePDF()
     pdf.add_page()
 
@@ -219,15 +219,13 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     pdf.set_y(y_start + box_height)
     pdf.ln(10)
 
-    # Tableau des services
+    # Tableau des services (3 colonnes : DESCRIPTION, HEURE, PRIX)
     pdf.set_fill_color(41, 128, 185)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(pdf.base_font, 'B', 11)
-    pdf.cell(70, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
-    pdf.cell(25, 10, pdf.safe('HEURE'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
-    pdf.cell(30, 10, pdf.safe('PRIX UNIT.'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='R')
-    pdf.cell(25, 10, pdf.safe('RABAIS'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
-    pdf.cell(40, 10, pdf.safe('TOTAL'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
+    pdf.cell(95, 10, pdf.safe('DESCRIPTION'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
+    pdf.cell(35, 10, pdf.safe('HEURE'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True, align='C')
+    pdf.cell(60, 10, pdf.safe('PRIX'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
     pdf.set_text_color(0, 0, 0)
     pdf.set_font(pdf.base_font, '', 10)
@@ -235,34 +233,21 @@ def create_pdf(entreprise, services, adresse_client, adresse_brudisweb, iban="",
     total_general = 0.0
     for service in services:
         desc, qty, price = service
-        montant_brut = qty * price
-        montant_rabais = montant_brut * (rabais / 100.0)
-        line_total = montant_brut - montant_rabais
-        total_general += line_total
-        pdf.cell(70, 10, pdf.safe(desc), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(25, 10, pdf.safe(str(qty)), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
-        pdf.cell(30, 10, pdf.safe(f'CHF {price:.2f}'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
-        pdf.cell(25, 10, pdf.safe(f'{rabais:.0f}%'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
-        pdf.cell(40, 10, pdf.safe(f'CHF {line_total:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
+        # Le prix saisi EST le montant affiché, pas de multiplication
+        total_general += price
+        pdf.cell(95, 10, pdf.safe(desc), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(35, 10, pdf.safe(str(qty)), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
+        pdf.cell(60, 10, pdf.safe(f'CHF {price:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
 
     pdf.ln(5)
 
     # Totaux
-    sous_total_brut = sum(q * p for _, q, p in services)
-    montant_rabais_total = sous_total_brut * (rabais / 100.0)
-
     pdf.set_fill_color(245, 245, 245)
     pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, 'B', 11)
     pdf.cell(40, 8, pdf.safe('Sous-total:'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP, fill=True)
     pdf.set_font(pdf.base_font, '', 11)
-    pdf.cell(40, 8, pdf.safe(f'CHF {sous_total_brut:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
-
-    if rabais > 0:
-        pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_font(pdf.base_font, '', 10)
-        pdf.cell(40, 8, pdf.safe(f'Rabais ({rabais:.0f}%):'), border=1, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(40, 8, pdf.safe(f'- CHF {montant_rabais_total:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
+    pdf.cell(40, 8, pdf.safe(f'CHF {total_general:.2f}'), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align='R')
 
     pdf.cell(110, 8, '', new_x=XPos.RIGHT, new_y=YPos.TOP)
     pdf.set_font(pdf.base_font, '', 10)
@@ -349,7 +334,7 @@ def main():
         with st.form("services_form", clear_on_submit=True):
             desc = st.text_input("Description du service")
             qty = st.text_input("Heures", placeholder="ex: 0.5, 1, 3.5")
-            price = st.text_input("Prix unitaire (CHF)", placeholder="ex: 150, 75.50")
+            price = st.text_input("Prix (CHF)", placeholder="ex: 60, 150")
             add = st.form_submit_button("➕ Ajouter le service")
             if add and desc:
                 try:
@@ -367,15 +352,13 @@ def main():
             for i, (d, q, p) in enumerate(st.session_state.services):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.write(f"{i+1}. {d} – {q}h × CHF {p:.2f} = CHF {q*p:.2f}")
+                    st.write(f"{i+1}. {d} – {q}h – CHF {p:.2f}")
                 with col2:
                     if st.button("❌", key=f"del_{i}"):
                         st.session_state.services.pop(i)
                         st.rerun()
 
         st.markdown("---")
-
-        rabais = st.number_input("💰 Rabais (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, format="%.0f")
 
         adresse_client = st.text_area(
             "📍 Adresse du client", 
@@ -402,16 +385,11 @@ def main():
             st.success("✅ Prêt pour génération")
             with st.expander("🔍 Détails de la facture", expanded=True):
                 st.write(f"**Client:** {entreprise}")
-                sous_total = sum(q*p for _, q, p in st.session_state.services)
-                montant_rabais = sous_total * (rabais / 100.0)
-                total_preview = sous_total - montant_rabais
-                st.write(f"**Sous-total:** CHF {sous_total:.2f}")
-                if rabais > 0:
-                    st.write(f"**Rabais ({rabais:.0f}%):** - CHF {montant_rabais:.2f}")
-                st.write(f"**Total estimé:** CHF {total_preview:.2f}")
+                total_preview = sum(p for _, _, p in st.session_state.services)
+                st.write(f"**Total:** CHF {total_preview:.2f}")
                 st.write(f"**Services:**")
                 for d, q, p in st.session_state.services:
-                    st.write(f"- {d} ({q}h × CHF {p:.2f}) = CHF {q*p:.2f}")
+                    st.write(f"- {d} ({q}h) – CHF {p:.2f}")
                 
                 st.write("**Adresse client:**")
                 if adresse_client:
@@ -456,8 +434,7 @@ def main():
                             adresse_client,
                             adresse_brudisweb,
                             iban,
-                            numero,
-                            rabais
+                            numero
                         )
                         raw_output = pdf.output()
                         pdf_content = bytes(raw_output) if isinstance(raw_output, bytearray) else raw_output
